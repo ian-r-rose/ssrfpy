@@ -3,25 +3,22 @@ from __future__ import print_function
 
 import ctypes
 import numpy as np
-from scipy.special import sph_harm
-from numpy.random import random_sample
-import matplotlib.pyplot as plt
 
 ssrfpack = ctypes.CDLL("./libssrfpack.so")
 
 class stripack_triangulation( object ):
     def __init__( self, x, y, z, vals):
         self.n = len(x)
-        self.tria_list = np.empty( 6*n, dtype='int64' )
-        self.tria_lptr = np.empty( 6*n, dtype='int64' )
-        self.tria_lend = np.empty( n, dtype='int64' )
+        self.tria_list = np.empty( 6*self.n, dtype='int64' )
+        self.tria_lptr = np.empty( 6*self.n, dtype='int64' )
+        self.tria_lend = np.empty( self.n, dtype='int64' )
         self.tria_lnew = ctypes.c_int64()
         self.x = x
         self.y = y
         self.z = z
         self.vals = vals
 
-def create_trmesh( x, y, z, vals ):
+def create_triangulation( x, y, z, vals ):
     #Do some type and length verification
     assert( isinstance( x, np.ndarray ) )
     assert( isinstance( y, np.ndarray ) )
@@ -73,7 +70,7 @@ def create_trmesh( x, y, z, vals ):
     #return the triangulation
     return tria
 
-def intrc0( lats, lons, tria, degrees = True ):
+def linear_interpolate( lats, lons, tria, degrees = True ):
     assert( lats.shape == lons.shape )
     shape = lats.shape    
 
@@ -121,32 +118,3 @@ def intrc0( lats, lons, tria, degrees = True ):
     values = flatvals.reshape( shape )
     return values
         
-        
-n=10000
-x = random_sample(n)-0.5
-y = random_sample(n)-0.5
-z = random_sample(n)-0.5
-
-for i, (xval,yval,zval) in enumerate(zip(x,y,z)):
-    norm = np.sqrt(xval*xval+yval*yval+zval*zval)
-    x[i] = x[i]/norm
-    y[i] = y[i]/norm
-    z[i] = z[i]/norm
-
-lats = np.arccos( z/np.sqrt(x*x+y*y+z*z))
-lons = np.arctan2( y, x )+np.pi
-
-#evaluate a spherical harmonic on that sphere
-vals = sph_harm(4,9, lons, lats).real
-vals = vals/np.amax(vals)
-
-tria = create_trmesh(x,y,z,vals)
-reglat = np.linspace(-90.,90., 91)
-reglon = np.linspace(0.,360., 181)
-meshlat,meshlon = np.meshgrid(reglat,reglon)
-
-values = intrc0( meshlat, meshlon, tria)
-
-plt.contourf( meshlon, meshlat, values)
-plt.show()
-
