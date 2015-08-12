@@ -1,10 +1,12 @@
 from __future__ import division
 from __future__ import print_function
 
+import os
 import ctypes
 import numpy as np
 
-ssrfpack = ctypes.CDLL("./libssrfpack.so")
+PATH=os.path.dirname(__file__)
+ssrfpack = ctypes.CDLL(PATH+"/_ssrfpack.so")
 
 class stripack_triangulation( object ):
     def __init__( self, x, y, z, vals):
