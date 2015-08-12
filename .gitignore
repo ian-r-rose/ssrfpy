@@ -1,0 +1,4 @@
+build/*
+dist/*
+ssrfpy.egg-info
+*.pyc
