@@ -1,3 +1,6 @@
+# Copyright (C) 2015, Rose, I
+# Released under GPL v3 or later.
+
 from __future__ import division
 from __future__ import print_function
 
@@ -8,7 +11,11 @@ import numpy as np
 PATH=os.path.dirname(__file__)
 ssrfpack = ctypes.CDLL(PATH+"/_ssrfpack.so")
 
-class stripack_triangulation( object ):
+class _stripack_triangulation( object ):
+    """
+    Class wrapping the arrays that STRIPACK uses 
+    to construct a triangulation over a sphere.
+    """
     def __init__( self, x, y, z, vals):
         self.n = len(x)
         self.tria_list = np.empty( 6*self.n, dtype='int64' )
@@ -20,7 +27,15 @@ class stripack_triangulation( object ):
         self.z = z
         self.vals = vals
 
-def create_triangulation( x, y, z, vals ):
+def _create_triangulation( x, y, z, vals ):
+    """
+    Given Cartesian points on the surface of a sphere 
+    and a vector of function values at those points, 
+    construct the Delaunay triangulation for those points.
+    The function values are not used in this, except to 
+    be stored in the triangulation object that is returned.
+    """
+
     #Do some type and length verification
     assert( isinstance( x, np.ndarray ) )
     assert( isinstance( y, np.ndarray ) )
@@ -36,7 +51,7 @@ def create_triangulation( x, y, z, vals ):
     n = ctypes.c_int64( len(x) )
 
     #allocate space for the triangulation structure
-    tria = stripack_triangulation( x, y, z, vals)
+    tria = _stripack_triangulation( x, y, z, vals)
     
     #allocate workspace
     work_near = np.empty( n.value, dtype='int64' )
@@ -72,7 +87,14 @@ def create_triangulation( x, y, z, vals ):
     #return the triangulation
     return tria
 
-def linear_interpolate( lats, lons, tria, degrees = True ):
+def _linear_interpolate( lons, lats, tria, degrees = True ):
+    """
+    Interpolate a function onto (lons, lats). The longitudes 
+    and latitudes may be arbitrary, and the triangulation is 
+    created with _create_triangulation().  If lons and lats 
+    are in degrees, set degrees=True.  If they are radians, 
+    set degrees=False
+    """
     assert( lats.shape == lons.shape )
     shape = lats.shape    
 
@@ -119,4 +141,61 @@ def linear_interpolate( lats, lons, tria, degrees = True ):
 
     values = flatvals.reshape( shape )
     return values
+
+def lon_lat_to_cartesian( lons, lats , degrees = True):
+    """
+    Small utility function that takes longitudes and latitudes
+    and converts them the Cartesian coodinates on a unit sphere.
+    Set degrees=True if they are measured in degrees, and False
+    if they are measured in radians.
+    """
+    x = np.empty_like(lons)
+    y = np.empty_like(lons)
+    z = np.empty_like(lons)
+    if degrees:
+        x = np.cos( np.deg2rad(lons) )*np.cos(deg2rad(lats) )
+        y = np.sin( np.deg2rad(lons) )*np.cos(deg2rad(lats) )
+        z = np.sin( np.deg2rad(lats) )
+    else:
+        x = np.cos(lons)*np.cos(lats)
+        y = np.sin(lons)*np.cos(lats)
+        z = np.sin(lats)
+    return x,y,z
         
+def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legendre=False ):
+    """
+    Given one dimensional arrays for longitude, latitude, and a function
+    evaluated at those points, construct a regular grid and interpolate the
+    function onto that grid.  The parameter ``n'' sets the resolution of the grid, 
+    where there are n+1 points in latitude and 2n points in longitude.
+    The degrees parameter should be True if longitude and latitude are 
+    measured in degrees, False if they are measured in radians.
+    """
+    x,y,z = lon_lat_to_cartesian( lons, lats , degrees)
+
+    #Figure out the resolution
+    nlat = 0
+    nlon = 0
+    if isinstance( n, tuple):
+        assert( len(n) == 2 )
+        nlon = 2*n(0)
+        nlat = n(1)+1
+    else:
+        nlon = 2*n
+        nlat = n+1
+
+    reg_lat = 0.0
+    if use_legendre:
+        raise Exception("Legendre points in latitude not yet implemented")
+    else:
+        reg_lat = np.linspace(-np.pi/2., np.pi/2., nlat, endpoint=True)
+    reg_lon = np.linspace(0., 2.*np.pi, nlon, endpoint = False )
+    if (degrees):
+        reg_lon = np.rad2deg(reg_lon)
+        reg_lat = np.rad2deg(reg_lat)
+    mesh_lon, mesh_lat = np.meshgrid(reg_lon, reg_lat)
+
+    tria = _create_triangulation(x, y, z, values)
+    mesh_values = _linear_interpolate( mesh_lon, mesh_lat, tria, degrees=degrees)
+
+    return mesh_lon, mesh_lat, mesh_values
