@@ -153,8 +153,8 @@ def lon_lat_to_cartesian( lons, lats , degrees = True):
     y = np.empty_like(lons)
     z = np.empty_like(lons)
     if degrees:
-        x = np.cos( np.deg2rad(lons) )*np.cos(deg2rad(lats) )
-        y = np.sin( np.deg2rad(lons) )*np.cos(deg2rad(lats) )
+        x = np.cos( np.deg2rad(lons) )*np.cos(np.deg2rad(lats) )
+        y = np.sin( np.deg2rad(lons) )*np.cos(np.deg2rad(lats) )
         z = np.sin( np.deg2rad(lats) )
     else:
         x = np.cos(lons)*np.cos(lats)
