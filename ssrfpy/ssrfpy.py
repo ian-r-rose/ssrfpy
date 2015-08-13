@@ -233,7 +233,8 @@ def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legend
     if use_legendre:
         points, lat_weights = legendre.leggauss(n)
         reg_lat = np.pi/2. - np.arccos( points )
-        reg_lon = np.linspace(0., 2.*np.pi, 2*n, endpoint = False )
+        # Add one extra longitude for plotting purposes (duplicate 0, 360)
+        reg_lon = np.linspace(0., 2.*np.pi, 2*n+1, endpoint = True )
     else:
         nlon = 2*n+1
         nlat = n+1
@@ -249,6 +250,7 @@ def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legend
 
     if use_legendre:
         mesh_weights = np.outer( lat_weights, np.ones_like(reg_lon) )*np.pi/n
+        mesh_weights[:,-1] = 0.0  # Set duplicated column to zero in weights
         return mesh_lon, mesh_lat, mesh_values, mesh_weights
     else:
         return mesh_lon, mesh_lat, mesh_values
