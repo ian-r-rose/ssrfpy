@@ -8,6 +8,15 @@ import os
 import ctypes
 import numpy as np
 
+#Try to import jit, but if it is not available
+#then just define an identity decorator
+try:
+    from numba import jit,njit
+except ImportError:
+    def jit(fn):
+        return fn
+    njit = jit
+
 PATH=os.path.dirname(__file__)
 ssrfpack = ctypes.CDLL(PATH+"/_ssrfpack.so")
 
@@ -161,27 +170,68 @@ def lon_lat_to_cartesian( lons, lats , degrees = True):
         y = np.sin(lons)*np.cos(lats)
         z = np.sin(lats)
     return x,y,z
+
+#Unclear whether jitting this function is worth it
+@jit
+def remove_duplicates( lons, lats, vals ):
+    """
+    Given the lons, lats, vals tuple, remove duplicated entries,
+    since Delaunay triangulation has a hard time with those.
+    It's unclear if this is a sensible implementation, though it 
+    seems to work. I sort the lon,lat,val tuples according to 
+    lon and lat, and if successive entries are equal, then 
+    don't include one in the final list. This is a looping heavy
+    function, so we try to jit it with numba, if available.
+    """
+    cleaned_lons = np.empty_like(lons)
+    cleaned_lats = np.empty_like(lats)
+    cleaned_vals = np.empty_like(vals)
+
+    n = len(lons)
+    indices = np.lexsort( (lons, lats ) )
+
+    #First point is always going to be unique
+    cleaned_lons[0] = lons[indices[0]]
+    cleaned_lats[0] = lats[indices[0]]
+    cleaned_vals[0] = vals[indices[0]]
+
+    j = 0 # counter for cleaned_lats,cleaned_lons
+    i = 1 # counter for lat,lons
+    while i < n:
+        if (lats[indices[i]] == cleaned_lats[j]) and (lons[indices[i]]==cleaned_lons[j]):
+            i += 1
+        else:
+            j += 1
+            cleaned_lons[j] = lons[indices[i]]
+            cleaned_lats[j] = lats[indices[i]]
+            cleaned_vals[j] = vals[indices[i]]
+            i += 1
+    cleaned_lons = np.delete( cleaned_lons, slice(j, None, None))
+    cleaned_lats = np.delete( cleaned_lats, slice(j, None, None))
+    cleaned_vals = np.delete( cleaned_vals, slice(j, None, None))
+    return cleaned_lons, cleaned_lats, cleaned_vals
         
 def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legendre=False ):
     """
     Given one dimensional arrays for longitude, latitude, and a function
     evaluated at those points, construct a regular grid and interpolate the
     function onto that grid.  The parameter ``n'' sets the resolution of the grid, 
-    where there are n+1 points in latitude and 2n points in longitude.
+    where there are n+1 points in latitude and 2n+1 points in longitude.
     The degrees parameter should be True if longitude and latitude are 
     measured in degrees, False if they are measured in radians.
     """
-    x,y,z = lon_lat_to_cartesian( lons, lats , degrees)
+    cleaned_lons, cleaned_lats, cleaned_values = remove_duplicates( lons, lats, values )
+    x,y,z = lon_lat_to_cartesian( cleaned_lons, cleaned_lats , degrees)
 
     #Figure out the resolution
     nlat = 0
     nlon = 0
     if isinstance( n, tuple):
         assert( len(n) == 2 )
-        nlon = 2*n(0)
+        nlon = 2*n(0)+1
         nlat = n(1)+1
     else:
-        nlon = 2*n
+        nlon = 2*n+1
         nlat = n+1
 
     reg_lat = 0.0
@@ -189,13 +239,13 @@ def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legend
         raise Exception("Legendre points in latitude not yet implemented")
     else:
         reg_lat = np.linspace(-np.pi/2., np.pi/2., nlat, endpoint=True)
-    reg_lon = np.linspace(0., 2.*np.pi, nlon, endpoint = False )
+    reg_lon = np.linspace(0., 2.*np.pi, nlon, endpoint = True )
     if (degrees):
         reg_lon = np.rad2deg(reg_lon)
         reg_lat = np.rad2deg(reg_lat)
     mesh_lon, mesh_lat = np.meshgrid(reg_lon, reg_lat)
 
-    tria = _create_triangulation(x, y, z, values)
+    tria = _create_triangulation(x, y, z, cleaned_values)
     mesh_values = _linear_interpolate( mesh_lon, mesh_lat, tria, degrees=degrees)
 
     return mesh_lon, mesh_lat, mesh_values
