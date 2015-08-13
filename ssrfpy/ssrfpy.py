@@ -7,6 +7,7 @@ from __future__ import print_function
 import os
 import ctypes
 import numpy as np
+import numpy.polynomial.legendre as legendre
 
 #Try to import jit, but if it is not available
 #then just define an identity decorator
@@ -219,6 +220,8 @@ def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legend
     evaluated at those points, construct a regular grid and interpolate the
     function onto that grid.  The parameter ``n'' sets the resolution of the grid, 
     where there are n+1 points in latitude and 2n+1 points in longitude.
+    If use_legendre is set to true, then ``n'' is interpreted as the order 
+    of the Gauss-Legendre quadrature, and the mesh is then n by 2n.
     The degrees parameter should be True if longitude and latitude are 
     measured in degrees, False if they are measured in radians.
     """
@@ -226,22 +229,16 @@ def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legend
     x,y,z = lon_lat_to_cartesian( cleaned_lons, cleaned_lats , degrees)
 
     #Figure out the resolution
-    nlat = 0
-    nlon = 0
-    if isinstance( n, tuple):
-        assert( len(n) == 2 )
-        nlon = 2*n(0)+1
-        nlat = n(1)+1
+
+    if use_legendre:
+        points, lat_weights = legendre.leggauss(n)
+        reg_lat = np.pi/2. - np.arccos( points )
+        reg_lon = np.linspace(0., 2.*np.pi, 2*n, endpoint = False )
     else:
         nlon = 2*n+1
         nlat = n+1
-
-    reg_lat = 0.0
-    if use_legendre:
-        raise Exception("Legendre points in latitude not yet implemented")
-    else:
+        reg_lon = np.linspace(0., 2.*np.pi, nlon, endpoint = True )
         reg_lat = np.linspace(-np.pi/2., np.pi/2., nlat, endpoint=True)
-    reg_lon = np.linspace(0., 2.*np.pi, nlon, endpoint = True )
     if (degrees):
         reg_lon = np.rad2deg(reg_lon)
         reg_lat = np.rad2deg(reg_lat)
@@ -250,4 +247,8 @@ def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legend
     tria = _create_triangulation(x, y, z, cleaned_values)
     mesh_values = _linear_interpolate( mesh_lon, mesh_lat, tria, degrees=degrees)
 
-    return mesh_lon, mesh_lat, mesh_values
+    if use_legendre:
+        mesh_weights = np.outer( lat_weights, np.ones_like(reg_lon) )*np.pi/n
+        return mesh_lon, mesh_lat, mesh_values, mesh_weights
+    else:
+        return mesh_lon, mesh_lat, mesh_values
