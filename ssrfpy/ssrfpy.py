@@ -92,6 +92,8 @@ def _create_triangulation( x, y, z, vals ):
         print("Exited with Error: ", ier.value )
         if ier.value < 1:
             print(errors[ier.value])
+        else:
+            print("There were duplicate vertices, which cannot be triangulated.")
 
     #return the triangulation
     return tria
