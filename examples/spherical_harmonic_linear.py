@@ -20,6 +20,7 @@ for i, (xval,yval,zval) in enumerate(zip(x,y,z)):
     y[i] = y[i]/norm
     z[i] = z[i]/norm
 
+#Calculate latitude and longitude of the random points
 colats = np.arccos( z/np.sqrt(x*x+y*y+z*z))
 lats = np.pi/2. - colats 
 lons = np.arctan2( y, x )+np.pi
@@ -29,8 +30,8 @@ vals = sph_harm(4,9, lons, colats).real
 vals = vals/np.amax(vals)
 
 
-#interpolate onto a regular grid
-meshlon, meshlat, values = ssrfpy.interpolate_regular_grid( lons, lats, vals, degrees=False) 
+#interpolate onto a regular grid with C0 interpolation
+meshlon, meshlat, values = ssrfpy.interpolate_regular_grid( lons, lats, vals, method = 'linear', degrees=False) 
 
 #Plot the result
 plt.contourf( meshlon, meshlat, values)
