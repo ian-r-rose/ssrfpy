@@ -99,6 +99,78 @@ def _create_triangulation( x, y, z, vals ):
     #return the triangulation
     return tria
 
+def _cubic_interpolate_regular_mesh( lons, lats, tria, degrees = True):
+    """
+    Interpolate using C1 splines onto a regular mesh.
+    lons and lats are 1D arrays containing the longitudes 
+    and latitudes at which to interpolate,
+    and tria is the triangulation which was
+    created with _create_triangulation().  If lons and lats 
+    are in degrees, set degrees=True.  If they are radians, 
+    """
+    assert (lats.ndim == 1)
+    assert (lons.ndim == 1)
+
+    #Convert to degrees if necessary
+    if degrees == True:
+        radlons = np.deg2rad( lons )
+        radlats = np.deg2rad( lats )
+    else:
+        radlons = lons
+        radlats = lats
+
+    n = ctypes.c_int64( tria.n )
+    #error handling
+    ier = ctypes.c_int64()
+    #mode flag: 0 means that it uses uniform tension
+    iflgs = ctypes.c_int64(0)
+    #mode flag: 0 means that it should calculate the gradients itself
+    iflgg = ctypes.c_int64(0)
+
+    nlon = ctypes.c_int64( len( radlons ) )
+    nlat = ctypes.c_int64( len( radlats ) )
+    nrow = ctypes.c_int64( len( radlats ) )
+
+    sigma = ctypes.c_double( 0. )
+
+    grad = np.empty( 3*n.value, dtype='float64' )
+    values = np.empty( shape=(nlon.value, nlat.value), dtype='float64' )
+
+    #interpolation onto a regular mesh
+    unif_ = ssrfpack.unif_
+    unif_( ctypes.byref(n),\
+           tria.x.ctypes.data_as(ctypes.POINTER(ctypes.c_double) ),\
+           tria.y.ctypes.data_as(ctypes.POINTER(ctypes.c_double) ),\
+           tria.z.ctypes.data_as(ctypes.POINTER(ctypes.c_double) ),\
+           tria.vals.ctypes.data_as(ctypes.POINTER(ctypes.c_double) ),\
+           tria.tria_list.ctypes.data_as(ctypes.POINTER(ctypes.c_int64) ),\
+           tria.tria_lptr.ctypes.data_as(ctypes.POINTER(ctypes.c_int64) ),\
+           tria.tria_lend.ctypes.data_as(ctypes.POINTER(ctypes.c_int64) ),\
+           ctypes.byref( iflgs ),\
+           ctypes.byref( sigma ),\
+           ctypes.byref( nrow ),\
+           ctypes.byref( nlat ),\
+           ctypes.byref( nlon ),\
+           radlats.ctypes.data_as(ctypes.POINTER(ctypes.c_double) ),\
+           radlons.ctypes.data_as(ctypes.POINTER(ctypes.c_double) ),\
+           ctypes.byref( iflgg ),\
+           grad.ctypes.data_as(ctypes.POINTER(ctypes.c_double) ),\
+           values.ctypes.data_as(ctypes.POINTER(ctypes.c_double) ),\
+           ctypes.byref( ier ) )
+
+    #Check the error code
+    if ier.value != 0:
+        if ier.value == -1:
+            print("Error: N, NI, or NJ are outside of the valid range")
+        elif ier.value == -2:
+            print("Error: There were colinear nodes.")
+        elif ier.value == -2:
+            print("Error: too much extrapolation")
+
+    return values.T
+
+
+
 def _linear_interpolate( lons, lats, tria, degrees = True ):
     """
     Interpolate a function onto (lons, lats). The longitudes 
@@ -176,7 +248,7 @@ def lon_lat_to_cartesian( lons, lats , degrees = True):
 
 #Unclear whether jitting this function is worth it
 @jit
-def remove_duplicates( lons, lats, vals ):
+def _remove_duplicates( lons, lats, vals ):
     """
     Given the lons, lats, vals tuple, remove duplicated entries,
     since Delaunay triangulation has a hard time with those.
@@ -214,7 +286,7 @@ def remove_duplicates( lons, lats, vals ):
     cleaned_vals = np.delete( cleaned_vals, slice(j, None, None))
     return cleaned_lons, cleaned_lats, cleaned_vals
         
-def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legendre=False ):
+def interpolate_regular_grid( lons, lats, values, n=90, method ='linear', degrees=True, use_legendre=False ):
     """
     Given one dimensional arrays for longitude, latitude, and a function
     evaluated at those points, construct a regular grid and interpolate the
@@ -225,11 +297,11 @@ def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legend
     The degrees parameter should be True if longitude and latitude are 
     measured in degrees, False if they are measured in radians.
     """
-    cleaned_lons, cleaned_lats, cleaned_values = remove_duplicates( lons, lats, values )
+    #Remove duplicates and convert to cartesian
+    cleaned_lons, cleaned_lats, cleaned_values = _remove_duplicates( lons, lats, values )
     x,y,z = lon_lat_to_cartesian( cleaned_lons, cleaned_lats , degrees)
 
-    #Figure out the resolution
-
+    #Figure out the resolution and make the mesh
     if use_legendre:
         points, lat_weights = legendre.leggauss(n)
         reg_lat = np.pi/2. - np.arccos( points )
@@ -245,9 +317,14 @@ def interpolate_regular_grid( lons, lats, values, n=90, degrees=True, use_legend
         reg_lat = np.rad2deg(reg_lat)
     mesh_lon, mesh_lat = np.meshgrid(reg_lon, reg_lat)
 
+    # The meat of the thing
     tria = _create_triangulation(x, y, z, cleaned_values)
-    mesh_values = _linear_interpolate( mesh_lon, mesh_lat, tria, degrees=degrees)
+    if method == 'linear':
+        mesh_values = _linear_interpolate( mesh_lon, mesh_lat, tria, degrees=degrees)
+    elif method == 'cubic':
+        mesh_values = _cubic_interpolate_regular_mesh( reg_lon, reg_lat, tria, degrees=degrees)
 
+    #Compute the quadrature weights if we have a GL grid
     if use_legendre:
         mesh_weights = np.outer( lat_weights, np.ones_like(reg_lon) )*np.pi/n
         mesh_weights[:,-1] = 0.0  # Set duplicated column to zero in weights
