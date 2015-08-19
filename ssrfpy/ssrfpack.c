@@ -6,13 +6,18 @@
  * of ssrfpack
  */
 
-#define _GNU_SOURCE
 #include <stdint.h>
 #include <math.h>
 
 typedef double doublereal;
 typedef int64_t integer;
 typedef uint32_t logical;
+
+void sincos( double x, double* sinx, double* cosx)
+{
+  *sinx = sin(x);
+  *cosx = cos(x);
+}
 
 #ifndef min
 #define min(x, y) (((x) < (y)) ? (x) : (y))
