@@ -22,7 +22,6 @@ except ImportError:
 try:
     PATH=os.path.dirname(__file__)
     ssrfso = glob.glob(PATH+'/*ssrfpack*.so')
-    print(ssrfso[0])
     if len(ssrfso) != 1:
         raise Exception('Cannot find SSRFPACK shared library')
     ssrfpack = ctypes.CDLL(ssrfso[0])
