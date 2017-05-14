@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import glob
 import ctypes
 import numpy as np
 import numpy.polynomial.legendre as legendre
@@ -18,8 +19,15 @@ except ImportError:
         return fn
     njit = jit
 
-PATH=os.path.dirname(__file__)
-ssrfpack = ctypes.CDLL(PATH+"/_ssrfpack.so")
+try:
+    PATH=os.path.dirname(__file__)
+    ssrfso = glob.glob(PATH+'/*ssrfpack*.so')
+    print(ssrfso[0])
+    if len(ssrfso) != 1:
+        raise Exception('Cannot find SSRFPACK shared library')
+    ssrfpack = ctypes.CDLL(ssrfso[0])
+except OSError:
+    raise Exception('Cannot find valid SSRFPACK shared library')
 
 class _stripack_triangulation( object ):
     """

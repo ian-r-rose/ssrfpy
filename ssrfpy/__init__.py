@@ -1,1 +1,1 @@
-from ssrfpy import *
+from .ssrfpy import *
